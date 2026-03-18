@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Gatekeeper</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-area">
+                <div class="icon-circle">VG</div>
+                <h1>Virtual Gatekeeper</h1>
+            </div>
+            <div class="badge">Official Engine</div>
+        </header>
+
+        <main>
+            <div id="permissions-notice" class="notice-banner hidden">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Host Permissions Required for Admin Features
+            </div>
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Verified</span>
+                    <span id="verified-count" class="stat-value">0</span>
+                </div>
+                <div class="stat-card intruder">
+                    <span class="stat-label">Intruders</span>
+                    <span id="intruder-count" class="stat-value">0</span>
+                </div>
+            </section>
+
+            <section class="control-panel">
+                <div class="toggle-group">
+                    <div class="toggle-info">
+                        <span class="toggle-title">
+                            Gatekeeper Mode
+                            <span class="info-icon" title="Disabled: Requires Host Permissions">?</span>
+                        </span>
+                        <span class="toggle-desc">Auto-deny unauthorized users</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="gatekeeper-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="toggle-group mt-12">
+                    <div class="toggle-info">
+                        <span class="toggle-title">Auto-Mute on Join</span>
+                        <span class="toggle-desc">Mute students as they enter</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="automute-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="emergency-actions" id="admin-actions">
+                <button id="mute-all" class="btn btn-emergency">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/><line x1="4.41" y1="4.41" x2="19.59" y2="19.59"/></svg>
+                    EMERGENCY SILENCE (MUTE ALL)
+                    <span class="info-icon info-white" title="Disabled: Requires Host Permissions">?</span>
+                </button>
+                <div id="mute-success" class="success-banner hidden">Mute All Command Sent!</div>
+            </section>
+
+            <section class="roster-management">
+                <h3>Roster Management</h3>
+                <div class="upload-area" id="drop-zone">
+                    <input type="file" id="roster-upload" accept=".csv,.txt" hidden>
+                    <div class="upload-content">
+                        <div id="upload-icon-wrapper">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </div>
+                        <p id="upload-text">Upload CSV/Text Roster</p>
+                        <span>(Name, Roll Number)</span>
+                    </div>
+                </div>
+                <div class="status-container">
+                    <span id="roster-indicator" class="indicator status-red"></span>
+                    <div id="roster-status" class="status-msg">No Roster - Manual Entry Only</div>
+                </div>
+            </section>
+
+            <section class="actions">
+                <button id="export-report" class="btn btn-primary">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export Attendance Report
+                </button>
+                <button id="clear-data" class="btn btn-danger">Clear Session Data</button>
+            </section>
+        </main>
+
+        <footer>
+            <p>Designed and Developed by <strong>Moin Ul Haq</strong></p>
+        </footer>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>

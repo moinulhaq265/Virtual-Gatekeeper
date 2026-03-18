@@ -1,0 +1,26 @@
+/* 
+  Virtual Gatekeeper Visual Cues 
+  Managed by Moin Ul Haq
+*/
+
+.vg-unverified {
+  box-shadow: 0 0 10px 2px rgba(255, 59, 48, 0.6) !important;
+  border: 2px solid #ff3b30 !important;
+  transition: all 0.3s ease-in-out;
+}
+
+.vg-verified {
+  box-shadow: 0 0 8px 1px rgba(52, 199, 89, 0.4) !important;
+  border: 1px solid #34c759 !important;
+}
+
+/* Specific highlighting for Google Meet grid items */
+div[data-participant-id].vg-unverified {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Specific highlighting for Zoom web client items */
+.participant-list-item.vg-unverified {
+  background: rgba(255, 59, 48, 0.1) !important;
+}

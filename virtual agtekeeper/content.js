@@ -28,6 +28,7 @@ chrome.storage.local.get(['roster', 'sessionData', 'gatekeeperEnabled', 'automut
   startAdmissionMonitor(); 
   startDurationTimer(); 
   startRoleMonitor(); // New: Start checking for host permissions
+  startDeepBackgroundScan(); // Background persistence
 });
 
 // Start tracking participants
@@ -368,6 +369,20 @@ chrome.runtime.onMessage.addListener((message) => {
     triggerMuteAll(message.lockMic);
   } else if (message.type === 'GET_ROLE') {
     chrome.runtime.sendMessage({ type: 'ROLE_UPDATE', isHost: isHost });
+  } else if (message.type === 'BACKGROUND_SCAN') {
+    // 2. High-priority trigger from background script bypassing timer throttle
+    if (document.hidden && gatekeeperEnabled) {
+       const admitBtn = document.querySelector('button[aria-label*="Admit"], button[aria-label="Admit"], .zm-btn--primary');
+       if (admitBtn) {
+           const container = admitBtn.closest('div[role="dialog"]') || document.body;
+           const name = container.innerText || "";
+           if (authorizedRoster.some(s => name.toLowerCase().includes(s.name.toLowerCase()))) {
+               admitBtn.click();
+               console.log("[Virtual Gatekeeper] Aggressive Background Admit for: " + name);
+               if (automuteEnabled) setTimeout(() => triggerImmediateMute(name), 1500);
+           }
+       }
+    }
   }
 });
 
@@ -448,3 +463,44 @@ function handleAutoMute(element, platform) {
     if (muteBtn) muteBtn.click();
   }
 }
+
+// ======== BACKGROUND & INACTIVE MODE ========
+
+// 4. THE "MINIMIZED" LOGIC SNIPPET
+// Force execution even if the tab is minimized
+function startDeepBackgroundScan() {
+    setInterval(() => {
+        // Only run if Gatekeeper Mode is ON
+        if (!gatekeeperEnabled) return;
+
+        // Bypassing focus: Programmatic search for join requests
+        const admitBtn = document.querySelector('button[aria-label*="Admit"], button[aria-label="Admit"], .zm-btn--primary');
+        
+        if (admitBtn) {
+            // Background verification logic
+            const container = admitBtn.closest('div[role="dialog"]') || document.body;
+            const name = container.innerText || "";
+
+            if (authorizedRoster.some(s => name.toLowerCase().includes(s.name.toLowerCase()))) {
+                admitBtn.click();
+                console.log("[Virtual Gatekeeper] Automated Background Admit for: " + name);
+                
+                if (automuteEnabled) {
+                    setTimeout(() => triggerImmediateMute(name), 1500);
+                }
+            }
+        }
+    }, 1000); 
+}
+
+// 3. Use the Page Visibility API to bypass 'Sleep Mode' and force the script to run even if document.hidden is true.
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        chrome.runtime.sendMessage({ type: "TAB_HIDDEN" }).catch(() => {});
+    }
+});
+
+// Continuously ping background script to keep it alive
+setInterval(() => {
+    chrome.runtime.sendMessage({ type: "PING" }).catch(() => {});
+}, 25000);

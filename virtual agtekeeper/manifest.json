@@ -26,8 +26,12 @@
         "https://meet.google.com/*",
         "https://zoom.us/*"
       ],
-      "js": ["content.js"],
-      "css": ["content.css"]
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ]
     }
   ]
 }

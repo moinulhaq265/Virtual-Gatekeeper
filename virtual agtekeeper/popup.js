@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         verifiedCount.textContent = data.stats.verified || 0;
         intruderCount.textContent = data.stats.intruders || 0;
       }
-      
+
       // Request current role from content script
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (tabs[0]) {
@@ -60,9 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Notify content script
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { 
-          type: 'TOGGLE_GATEKEEPER', 
-          enabled: gatekeeperToggle.checked 
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'TOGGLE_GATEKEEPER',
+          enabled: gatekeeperToggle.checked
         });
       }
     });
@@ -73,9 +73,9 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.set({ automuteEnabled: automuteToggle.checked });
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { 
-          type: 'TOGGLE_AUTOMUTE', 
-          enabled: automuteToggle.checked 
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'TOGGLE_AUTOMUTE',
+          enabled: automuteToggle.checked
         });
       }
     });
@@ -89,17 +89,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentLock = muteAllBtn.getAttribute('data-lock') === 'true';
         const newLock = !currentLock;
         muteAllBtn.setAttribute('data-lock', newLock);
-        
-        chrome.tabs.sendMessage(tabs[0].id, { 
-          type: 'MUTE_ALL', 
-          lockMic: newLock 
+
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: 'MUTE_ALL',
+          lockMic: newLock
         });
-        
+
         // Success Feedback
         muteSuccess.textContent = newLock ? "Mic Lock ACTIVE - All Students Muted" : "Mic Lock RELEASED";
         muteSuccess.classList.remove('hidden');
         muteAllBtn.classList.toggle('btn-danger', newLock);
-        
+
         setTimeout(() => {
           muteSuccess.classList.add('hidden');
         }, 3000);
@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.get(['sessionData', 'roster'], (data) => {
       const logs = data.sessionData || {};
       const roster = data.roster || [];
-      
+
       if (Object.keys(logs).length === 0 && roster.length === 0) {
         alert('No attendance data or roster found.');
         return;
@@ -174,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function generateCSV(logs, roster) {
     let csvContent = "Virtual Gatekeeper - Official Attendance Report | Managed by Moin Ul Haq\n";
     csvContent += "Student Name,Roll Number,Status (Present/Absent/Intruder),Join Time,Total Duration (Mins),Architect\n";
-    
+
     // Create a set of names that have logs
     const loggedNames = new Set(Object.keys(logs).map(n => n.toLowerCase().trim()));
 
@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Attendance_Report_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute("download", `Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -206,9 +206,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (confirm('Are you sure you want to deep clear all session data and the roster?')) {
       chrome.storage.local.clear(() => {
         // Re-initialize with empty defaults
-        chrome.storage.local.set({ 
-          sessionData: {}, 
-          roster: [], 
+        chrome.storage.local.set({
+          sessionData: {},
+          roster: [],
           stats: { verified: 0, intruders: 0 },
           gatekeeperEnabled: false,
           automuteEnabled: false

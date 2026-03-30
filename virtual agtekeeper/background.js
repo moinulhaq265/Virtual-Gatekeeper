@@ -6,9 +6,9 @@
 // 1. BACKGROUND SERVICE WORKER (THE PERSISTENCE)
 // High-priority setInterval triggered from the background script
 setInterval(() => {
-  chrome.tabs.query({url: ["*://meet.google.com/*", "*://zoom.us/*", "*://*.zoom.us/*"]}, (tabs) => {
+  chrome.tabs.query({ url: ["*://meet.google.com/*", "*://zoom.us/*", "*://*.zoom.us/*"] }, (tabs) => {
     tabs.forEach(tab => {
-      chrome.tabs.sendMessage(tab.id, { type: "BACKGROUND_SCAN" }).catch(() => {});
+      chrome.tabs.sendMessage(tab.id, { type: "BACKGROUND_SCAN" }).catch(() => { });
     });
   });
 }, 1000);

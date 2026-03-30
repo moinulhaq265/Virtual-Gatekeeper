@@ -5,16 +5,17 @@
 
 let authorizedRoster = [];
 let sessionData = {}; // Renamed from sessionLogs
+let activeSessions = []; // Tracks students currently inside the meeting
 let gatekeeperEnabled = false;
 let automuteEnabled = false;
 let stats = { verified: 0, intruders: 0 };
 let lastScanTime = 0;
-let admissionCheckInterval = null; 
-let durationInterval = null; 
+let admissionCheckInterval = null;
+let durationInterval = null;
 let roleCheckInterval = null; // New: periodic role check
-let micLockActive = false; 
+let micLockActive = false;
 let isHost = false; // New: track user role
-const SCAN_INTERVAL = 2500; 
+const SCAN_INTERVAL = 2500;
 
 // Initialize from storage
 chrome.storage.local.get(['roster', 'sessionData', 'gatekeeperEnabled', 'automuteEnabled', 'stats'], (data) => {
@@ -23,13 +24,31 @@ chrome.storage.local.get(['roster', 'sessionData', 'gatekeeperEnabled', 'automut
   gatekeeperEnabled = data.gatekeeperEnabled || false;
   automuteEnabled = data.automuteEnabled || false;
   stats = data.stats || { verified: 0, intruders: 0 };
-  
+
   startTracking();
-  startAdmissionMonitor(); 
-  startDurationTimer(); 
+  startAdmissionMonitor();
+  startDurationTimer();
   startRoleMonitor(); // New: Start checking for host permissions
   startDeepBackgroundScan(); // Background persistence
 });
+
+// --- POINT 3: SELF-CLEANING LOGIC (RECONNECTION FIX) ---
+function updateActiveSessions() {
+  const isMeet = window.location.hostname.includes('meet.google.com');
+  const participants = document.querySelectorAll(isMeet ? "div[data-participant-id]" : ".participant-list-item");
+  
+  let currentlyPresent = [];
+  participants.forEach(el => {
+      let name = isMeet 
+          ? (el.querySelector("span[jsname='re6Sdb']")?.textContent || el.getAttribute('aria-label') || '')
+          : (el.querySelector(".participant-name")?.textContent || '');
+      if (name) currentlyPresent.push(name.toLowerCase().trim());
+  });
+
+  // Sync activeSessions with actual people in the meeting
+  activeSessions = currentlyPresent;
+}
+setInterval(updateActiveSessions, 5000); // Scan every 5 seconds to allow re-entry
 
 // Start tracking participants
 function startTracking() {
@@ -58,7 +77,7 @@ function startAdmissionMonitor() {
 function checkAdmissionPopup() {
   // Use querySelectorAll to find all buttons robustly
   const buttons = Array.from(document.querySelectorAll('button'));
-  
+
   const admitBtn = buttons.find(btn => {
     const text = (btn.innerText || btn.getAttribute('aria-label') || "").toLowerCase();
     return text.includes("admit") || text.includes("allow");
@@ -72,10 +91,10 @@ function checkAdmissionPopup() {
   if (admitBtn || denyBtn) {
     let requesterName = "Guest";
     // Detection logic for the requester's name
-    const popup = admitBtn?.closest('div[role="dialog"]') || 
-                  denyBtn?.closest('div[role="dialog"]') || 
-                  admitBtn?.closest('.participants-section-container') ||
-                  admitBtn?.parentElement?.parentElement;
+    const popup = admitBtn?.closest('div[role="dialog"]') ||
+      denyBtn?.closest('div[role="dialog"]') ||
+      admitBtn?.closest('.participants-section-container') ||
+      admitBtn?.parentElement?.parentElement;
 
     if (popup) {
       const textContent = popup.innerText || "";
@@ -95,16 +114,27 @@ function checkAdmissionPopup() {
       }
     }
 
-    const isAuthorized = authorizedRoster.some(student => 
-      requesterName.toLowerCase().trim() === student.name.toLowerCase().trim()
-    );
+    const cleanName = requesterName.toLowerCase().trim();
 
-    if (isAuthorized && admitBtn) {
-      console.log(`[Virtual Gatekeeper] Auto-Admitting: ${requesterName}`);
+    // POINT 1: Match against Roster (Name + Roll No support)
+    const isAuthorized = authorizedRoster.some(student => {
+      const rosterEntry = student.name.toLowerCase().trim();
+      return rosterEntry.includes(cleanName) || cleanName.includes(rosterEntry);
+    });
+
+    // POINT 2: Check for Duplicate
+    const isAlreadyInside = activeSessions.includes(cleanName);
+
+    if (isAuthorized && !isAlreadyInside && admitBtn) {
+      console.log(`[Virtual Gatekeeper] Admitting Authorized: ${cleanName}`);
       admitBtn.click();
-      
+      activeSessions.push(cleanName); // Lock the session
+
       // Task 3: Trigger immediate tracking for admitted student
-      const student = authorizedRoster.find(s => requesterName.toLowerCase().trim() === s.name.toLowerCase().trim());
+      const student = authorizedRoster.find(s => {
+        const rosterEntry = s.name.toLowerCase().trim();
+        return rosterEntry.includes(cleanName) || cleanName.includes(rosterEntry);
+      });
       if (!sessionData[requesterName]) {
         sessionData[requesterName] = {
           name: requesterName,
@@ -121,10 +151,13 @@ function checkAdmissionPopup() {
       if (automuteEnabled) {
         setTimeout(() => triggerImmediateMute(requesterName), 1500); // Small delay for participant list to update
       }
+    } else if (isAlreadyInside && denyBtn) {
+      console.log(`[Virtual Gatekeeper] Blocking Duplicate Entry: ${cleanName}`);
+      denyBtn.click(); // Reject the intruder/duplicate
     } else if (!isAuthorized && gatekeeperEnabled && denyBtn) {
-      console.log(`[Virtual Gatekeeper] Auto-Denying: ${requesterName}`);
+      console.log(`[Virtual Gatekeeper] Rejecting Unauthorized: ${cleanName}`);
       denyBtn.click();
-      
+
       // Update intruder count and storage
       stats.intruders++;
       chrome.storage.local.set({ stats });
@@ -143,8 +176,8 @@ function startDurationTimer() {
 
 function updateAttendanceDuration() {
   const isMeet = window.location.hostname.includes('meet.google.com');
-  const participants = isMeet 
-    ? document.querySelectorAll("div[data-participant-id]") 
+  const participants = isMeet
+    ? document.querySelectorAll("div[data-participant-id]")
     : document.querySelectorAll(".participant-list-item");
 
   participants.forEach(el => {
@@ -158,8 +191,12 @@ function updateAttendanceDuration() {
     if (!name) return;
 
     // Check against Roster
-    const student = authorizedRoster.find(s => name.toLowerCase().trim() === s.name.toLowerCase().trim());
-    
+    const cleanName = name.toLowerCase().trim();
+    const student = authorizedRoster.find(s => {
+      const rosterEntry = s.name.toLowerCase().trim();
+      return rosterEntry.includes(cleanName) || cleanName.includes(rosterEntry);
+    });
+
     if (!sessionData[name]) {
       sessionData[name] = {
         name: name,
@@ -227,17 +264,19 @@ function processParticipants(participantElements, platform) {
 
     let name = '';
     if (platform === 'MEET') {
-      name = el.querySelector("span[jsname='re6Sdb']")?.textContent || 
-             el.getAttribute('aria-label') || '';
+      name = el.querySelector("span[jsname='re6Sdb']")?.textContent ||
+        el.getAttribute('aria-label') || '';
     } else {
       name = el.querySelector(".participant-name")?.textContent || '';
     }
 
     if (!name) return;
 
-    const isAuthorized = authorizedRoster.some(student => 
-      name.toLowerCase().trim() === student.name.toLowerCase().trim()
-    );
+    const cleanName = name.toLowerCase().trim();
+    const isAuthorized = authorizedRoster.some(student => {
+      const rosterEntry = student.name.toLowerCase().trim();
+      return rosterEntry.includes(cleanName) || cleanName.includes(rosterEntry);
+    });
 
     el.classList.add('vg-checked');
 
@@ -282,20 +321,20 @@ function checkUserRole() {
 
   if (isMeet) {
     const hostBtn = document.querySelector("button[aria-label*='Host controls'], button[jsname='v6by9d']");
-    const muteAllBtn = Array.from(document.querySelectorAll('button')).find(b => 
+    const muteAllBtn = Array.from(document.querySelectorAll('button')).find(b =>
       b.innerText?.includes('Mute all') || b.getAttribute('aria-label')?.includes('Mute all')
     );
     // Also check for Admit button directly as a sign of host/co-host power
-    const admitBtn = Array.from(document.querySelectorAll('button')).find(b => 
+    const admitBtn = Array.from(document.querySelectorAll('button')).find(b =>
       b.innerText?.toLowerCase().includes("admit") || b.innerText?.toLowerCase().includes("allow")
     );
     if (hostBtn || muteAllBtn || admitBtn) hostFound = true;
   } else if (isZoom) {
-    const zoomMuteAll = document.querySelector(".mute-all-button") || 
-                        Array.from(document.querySelectorAll('button')).find(b => 
-                          b.innerText?.includes("Mute All") || b.innerText?.includes("Mute all")
-                        );
-    const zoomAdmit = Array.from(document.querySelectorAll('button')).find(b => 
+    const zoomMuteAll = document.querySelector(".mute-all-button") ||
+      Array.from(document.querySelectorAll('button')).find(b =>
+        b.innerText?.includes("Mute All") || b.innerText?.includes("Mute all")
+      );
+    const zoomAdmit = Array.from(document.querySelectorAll('button')).find(b =>
       b.innerText?.includes("Admit") || b.innerText?.includes("admit")
     );
     if (zoomMuteAll || zoomAdmit) hostFound = true;
@@ -312,12 +351,12 @@ function checkUserRole() {
 function triggerImmediateMute(name) {
   const isMeet = window.location.hostname.includes('meet.google.com');
   const participants = document.querySelectorAll(isMeet ? "div[data-participant-id]" : ".participant-list-item");
-  
+
   participants.forEach(el => {
-    const elName = isMeet 
+    const elName = isMeet
       ? (el.querySelector("span[jsname='re6Sdb']")?.textContent || el.getAttribute('aria-label') || '')
       : (el.querySelector(".participant-name")?.textContent || '');
-    
+
     if (elName.toLowerCase().includes(name.toLowerCase())) {
       handleAutoMute(el, isMeet ? 'MEET' : 'ZOOM');
     }
@@ -326,7 +365,11 @@ function triggerImmediateMute(name) {
 
 function handleAuthorized(name, time) {
   if (!sessionData[name]) {
-    const student = authorizedRoster.find(s => name.toLowerCase().trim() === s.name.toLowerCase().trim());
+    const cleanName = name.toLowerCase().trim();
+    const student = authorizedRoster.find(s => {
+      const rosterEntry = s.name.toLowerCase().trim();
+      return rosterEntry.includes(cleanName) || cleanName.includes(rosterEntry);
+    });
     sessionData[name] = {
       name: name,
       roll: student ? student.roll : 'N/A',
@@ -372,16 +415,33 @@ chrome.runtime.onMessage.addListener((message) => {
   } else if (message.type === 'BACKGROUND_SCAN') {
     // 2. High-priority trigger from background script bypassing timer throttle
     if (document.hidden && gatekeeperEnabled) {
-       const admitBtn = document.querySelector('button[aria-label*="Admit"], button[aria-label="Admit"], .zm-btn--primary');
-       if (admitBtn) {
-           const container = admitBtn.closest('div[role="dialog"]') || document.body;
-           const name = container.innerText || "";
-           if (authorizedRoster.some(s => name.toLowerCase().includes(s.name.toLowerCase()))) {
-               admitBtn.click();
-               console.log("[Virtual Gatekeeper] Aggressive Background Admit for: " + name);
-               if (automuteEnabled) setTimeout(() => triggerImmediateMute(name), 1500);
-           }
-       }
+      const admitBtn = document.querySelector('button[aria-label*="Admit"], button[aria-label="Admit"], .zm-btn--primary');
+      if (admitBtn) {
+        const container = admitBtn.closest('div[role="dialog"]') || document.body;
+        const textContent = container.innerText || "";
+        let requesterName = "Guest";
+        const match = textContent.match(/^(.+?)\s+(wants to join|is requesting|is asking)/i);
+        if (match && match[1]) {
+          requesterName = match[1].trim();
+        } else {
+          requesterName = textContent.replace(/Admit|Deny|Remove|allow|reject|decline/ig, '').trim();
+        }
+
+        const cleanName = requesterName.toLowerCase().trim();
+        
+        const isAuthorized = authorizedRoster.some(s => {
+          const rosterEntry = s.name.toLowerCase().trim();
+          return rosterEntry.includes(cleanName) || cleanName.includes(rosterEntry);
+        });
+        const isAlreadyInside = activeSessions.includes(cleanName);
+
+        if (isAuthorized && !isAlreadyInside) {
+          admitBtn.click();
+          activeSessions.push(cleanName);
+          console.log("[Virtual Gatekeeper] Aggressive Background Admit for: " + cleanName);
+          if (automuteEnabled) setTimeout(() => triggerImmediateMute(requesterName), 1500);
+        }
+      }
     }
   }
 });
@@ -394,7 +454,7 @@ async function triggerMuteAll(lockMic = false) {
     // 1. Native Mute All
     let muteAllBtn = Array.from(document.querySelectorAll('button'))
       .find(btn => btn.textContent?.includes('Mute all') || btn.getAttribute('aria-label')?.includes('Mute all'));
-    
+
     if (muteAllBtn) {
       muteAllBtn.click();
       setTimeout(() => {
@@ -409,9 +469,9 @@ async function triggerMuteAll(lockMic = false) {
     }
   } else if (isZoom) {
     // Zoom Web Mute All
-    let zoomMuteAll = document.querySelector(".mute-all-button") || 
-                      Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes("Mute All"));
-    
+    let zoomMuteAll = document.querySelector(".mute-all-button") ||
+      Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes("Mute All"));
+
     if (zoomMuteAll) {
       zoomMuteAll.click();
       setTimeout(() => {
@@ -429,21 +489,21 @@ async function toggleMicLock(enabled) {
   if (hostBtn) {
     hostBtn.click();
     await new Promise(r => setTimeout(r, 800));
-    
+
     const micToggle = Array.from(document.querySelectorAll('input[type="checkbox"], button[role="switch"]'))
       .find(el => el.getAttribute('aria-label')?.includes('Microphone access') || el.innerText?.includes('Microphone access'));
-    
+
     if (micToggle) {
       const isCurrentlyEnabled = micToggle.checked || micToggle.getAttribute('aria-checked') === 'true';
       if (enabled && isCurrentlyEnabled) {
-         micToggle.click(); // Turn OFF
-         console.log("[Virtual Gatekeeper] Mic Lock Active: Microphones Disabled.");
+        micToggle.click(); // Turn OFF
+        console.log("[Virtual Gatekeeper] Mic Lock Active: Microphones Disabled.");
       } else if (!enabled && !isCurrentlyEnabled) {
-         micToggle.click(); // Turn ON
-         console.log("[Virtual Gatekeeper] Mic Lock Released: Microphones Allowed.");
+        micToggle.click(); // Turn ON
+        console.log("[Virtual Gatekeeper] Mic Lock Released: Microphones Allowed.");
       }
     }
-    
+
     // Close panel
     hostBtn.click();
   }
@@ -469,38 +529,54 @@ function handleAutoMute(element, platform) {
 // 4. THE "MINIMIZED" LOGIC SNIPPET
 // Force execution even if the tab is minimized
 function startDeepBackgroundScan() {
-    setInterval(() => {
-        // Only run if Gatekeeper Mode is ON
-        if (!gatekeeperEnabled) return;
+  setInterval(() => {
+    // Only run if Gatekeeper Mode is ON
+    if (!gatekeeperEnabled) return;
 
-        // Bypassing focus: Programmatic search for join requests
-        const admitBtn = document.querySelector('button[aria-label*="Admit"], button[aria-label="Admit"], .zm-btn--primary');
-        
-        if (admitBtn) {
-            // Background verification logic
-            const container = admitBtn.closest('div[role="dialog"]') || document.body;
-            const name = container.innerText || "";
+    // Bypassing focus: Programmatic search for join requests
+    const admitBtn = document.querySelector('button[aria-label*="Admit"], button[aria-label="Admit"], .zm-btn--primary');
 
-            if (authorizedRoster.some(s => name.toLowerCase().includes(s.name.toLowerCase()))) {
-                admitBtn.click();
-                console.log("[Virtual Gatekeeper] Automated Background Admit for: " + name);
-                
-                if (automuteEnabled) {
-                    setTimeout(() => triggerImmediateMute(name), 1500);
-                }
-            }
+    if (admitBtn) {
+      // Background verification logic
+      const container = admitBtn.closest('div[role="dialog"]') || document.body;
+      const textContent = container.innerText || "";
+      let requesterName = "Guest";
+      const match = textContent.match(/^(.+?)\s+(wants to join|is requesting|is asking)/i);
+      if (match && match[1]) {
+        requesterName = match[1].trim();
+      } else {
+        requesterName = textContent.replace(/Admit|Deny|Remove|allow|reject|decline/ig, '').trim();
+      }
+
+      const cleanName = requesterName.toLowerCase().trim();
+
+      const isAuthorized = authorizedRoster.some(s => {
+        const rosterEntry = s.name.toLowerCase().trim();
+        return rosterEntry.includes(cleanName) || cleanName.includes(rosterEntry);
+      });
+      const isAlreadyInside = activeSessions.includes(cleanName);
+
+      if (isAuthorized && !isAlreadyInside) {
+        admitBtn.click();
+        activeSessions.push(cleanName);
+        console.log("[Virtual Gatekeeper] Automated Background Admit for: " + cleanName);
+
+        if (automuteEnabled) {
+          setTimeout(() => triggerImmediateMute(requesterName), 1500);
         }
-    }, 1000); 
+      }
+    }
+  }, 1000);
 }
 
 // 3. Use the Page Visibility API to bypass 'Sleep Mode' and force the script to run even if document.hidden is true.
 document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        chrome.runtime.sendMessage({ type: "TAB_HIDDEN" }).catch(() => {});
-    }
+  if (document.hidden) {
+    chrome.runtime.sendMessage({ type: "TAB_HIDDEN" }).catch(() => { });
+  }
 });
 
 // Continuously ping background script to keep it alive
 setInterval(() => {
-    chrome.runtime.sendMessage({ type: "PING" }).catch(() => {});
+  chrome.runtime.sendMessage({ type: "PING" }).catch(() => { });
 }, 25000);

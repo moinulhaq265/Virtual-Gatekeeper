@@ -69,7 +69,7 @@ This project is a direct response to the energy crisis in Pakistan. By automatin
 ---
 
 ## ❤️ Contact & Support
-**Developed by Moin Ul Haq** *EdTech Innovator & Problem Solver*
+**Developed by Moin Ul Haq** *ZEdTech Innovator & Problem Solver*
 
 - **WhatsApp:** [+92 315 4565603](https://wa.me/923154565603)
 - **LinkedIn:** [Discuss EdTech Innovations with me](https://www.linkedin.com/in/moin-ul-haq-627761363/)
